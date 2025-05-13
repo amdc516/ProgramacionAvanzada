@@ -1,0 +1,3 @@
+# Ignore Airflow configuration file
+airflow.cfg
+data/triple-circle-457622-u6-e72c84a8574f.json
