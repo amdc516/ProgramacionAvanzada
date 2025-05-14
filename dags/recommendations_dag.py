@@ -8,6 +8,7 @@ import pandas as pd
 from pathlib import Path
 from google.cloud import storage
 import io
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,17 @@ file_names = [
 )
 def csv_processing_pipeline():
 
+    def upload_to_gcs(bucket_name, destination_blob_name, data_dict):
+        storage_client = storage.Client.from_service_account_json(key_path)
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(destination_blob_name)
+
+        # Serializar y subir
+        blob.upload_from_string(
+            data=json.dumps(data_dict, indent=2),
+            content_type='application/json'
+        )
+
     @task()
     def leer_csv_desde_gcs(file_name: str):
         storage_client = storage.Client.from_service_account_json(key_path)
@@ -47,12 +59,11 @@ def csv_processing_pipeline():
         # Obtener la fecha de ayer
         yesterday = (datetime.now() - timedelta(days=1)).date()
 
-        # Leer los datos
-        #data = pd.read_csv(path_csv)
+        # Leer los datos        
         data = pd.DataFrame(data)
         advertisers_activos = pd.DataFrame(info)
         logger.info(f'this is the info: {advertisers_activos}')
-        #advertisers_activos = pd.read_csv(advertiser_ids_path)
+        
         advertisers_activos_list = advertisers_activos['advertiser_id'].tolist()
 
         logger.info(f'These are the active advertisers of the day: {advertisers_activos_list}')
@@ -67,9 +78,9 @@ def csv_processing_pipeline():
         ]
 
         logger.info(f'Estos son los datos filtrados (advertisers activos y fecha de ayer):\n{filtered}')
-        #cada diccionario del return es una fila
+        
         return {
-            "filtered_today": filtered.to_dict(orient="records"),  # Lista de dicts por fila
+            "filtered_today": filtered.to_dict(orient="records"), 
             "advertisers_list": advertisers_activos_list
         }
 
@@ -114,6 +125,11 @@ def csv_processing_pipeline():
             for advertiser, group in top_ctr_per_advertiser.groupby('advertiser_id')
         }
 
+        today = datetime.today().strftime('%Y-%m-%d')
+        bucket_name = 'tp-final'
+        blob_name = f'airflow_outputs/top_ctr_{today}.json'
+        upload_to_gcs(bucket_name, blob_name, result)
+
         return result
 
 
@@ -145,6 +161,11 @@ def csv_processing_pipeline():
             str(advertiser): group.drop(columns='advertiser_id').to_dict(orient='records')
             for advertiser, group in top_products.groupby('advertiser_id')
         }
+
+        today = datetime.today().strftime('%Y-%m-%d')
+        bucket_name = 'tp-final'
+        blob_name = f'airflow_outputs/top_products_{today}.json'
+        upload_to_gcs(bucket_name, blob_name, result)
 
         return result
 
